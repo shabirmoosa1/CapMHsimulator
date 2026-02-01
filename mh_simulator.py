@@ -1,6 +1,6 @@
 """
-🚀 PsySSA NHI Mental Health Cost Simulator
-A Gamified NGT Dashboard for Mental Health Package Design
+🧠 NHI Mental Health: FFS vs Capitation Simulator
+Simplified Version for Health Professionals
 For PsySSA Workshop - February 3, 2026
 
 Author: Built for Prof Shabir Moosa, NHI Branch
@@ -10,153 +10,182 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
-import json
 from datetime import datetime
-import base64
-from io import BytesIO
 
 # ============================================================
 # PAGE CONFIG & STYLING
 # ============================================================
 st.set_page_config(
-    page_title="PsySSA NHI Mental Health Simulator",
+    page_title="NHI Mental Health Simulator",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for PsySSA branding
+# Custom CSS - Clean Professional Style
 st.markdown("""
 <style>
-    /* Main theme colors - Blues and Greens */
     :root {
         --primary-blue: #1E5F8A;
-        --secondary-green: #2E8B57;
-        --accent-teal: #20B2AA;
-        --light-bg: #F0F8FF;
+        --secondary-green: #28a745;
+        --warning-red: #dc3545;
+        --neutral-gray: #6c757d;
     }
     
-    /* Header styling */
     .main-header {
         background: linear-gradient(135deg, #1E5F8A 0%, #2E8B57 100%);
         padding: 1.5rem;
         border-radius: 10px;
         color: white;
         text-align: center;
-        margin-bottom: 1rem;
+        margin-bottom: 1.5rem;
     }
     
-    /* Score card styling */
-    .score-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    .income-card {
         padding: 1.5rem;
-        border-radius: 15px;
-        color: white;
+        border-radius: 12px;
         text-align: center;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        margin: 0.5rem 0;
     }
     
-    .score-value {
-        font-size: 3rem;
+    .income-green {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+    }
+    
+    .income-red {
+        background: linear-gradient(135deg, #dc3545 0%, #e83e8c 100%);
+        color: white;
+    }
+    
+    .income-neutral {
+        background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+        color: white;
+    }
+    
+    .income-value {
+        font-size: 2.5rem;
         font-weight: bold;
         margin: 0.5rem 0;
     }
     
-    /* Badge styling */
+    .comparison-better {
+        color: #28a745;
+        font-weight: bold;
+    }
+    
+    .comparison-worse {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    
+    .warning-box {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 1rem;
+        border-radius: 0 8px 8px 0;
+        margin: 0.5rem 0;
+    }
+    
+    .danger-box {
+        background: #f8d7da;
+        border-left: 4px solid #dc3545;
+        padding: 1rem;
+        border-radius: 0 8px 8px 0;
+        margin: 0.5rem 0;
+    }
+    
+    .success-box {
+        background: #d4edda;
+        border-left: 4px solid #28a745;
+        padding: 1rem;
+        border-radius: 0 8px 8px 0;
+        margin: 0.5rem 0;
+    }
+    
+    .info-box {
+        background: #e7f3ff;
+        border-left: 4px solid #1E5F8A;
+        padding: 1rem;
+        border-radius: 0 8px 8px 0;
+        margin: 0.5rem 0;
+    }
+    
     .badge {
         display: inline-block;
-        padding: 0.5rem 1rem;
+        padding: 0.4rem 0.8rem;
         border-radius: 20px;
         margin: 0.25rem;
         font-weight: bold;
         font-size: 0.85rem;
     }
     
-    .badge-gold {
-        background: linear-gradient(135deg, #f5af19, #f12711);
-        color: white;
-    }
+    .badge-gold { background: linear-gradient(135deg, #f5af19, #f12711); color: white; }
+    .badge-green { background: linear-gradient(135deg, #11998e, #38ef7d); color: white; }
+    .badge-blue { background: linear-gradient(135deg, #4facfe, #00f2fe); color: white; }
     
-    .badge-silver {
-        background: linear-gradient(135deg, #bdc3c7, #2c3e50);
-        color: white;
-    }
-    
-    .badge-green {
-        background: linear-gradient(135deg, #11998e, #38ef7d);
-        color: white;
-    }
-    
-    .badge-blue {
-        background: linear-gradient(135deg, #4facfe, #00f2fe);
-        color: white;
-    }
-    
-    /* Metric cards */
-    .metric-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        border-left: 4px solid #1E5F8A;
-    }
-    
-    /* Leaderboard styling */
-    .leaderboard-entry {
+    .assumptions-panel {
         background: #f8f9fa;
-        padding: 0.75rem;
+        border: 1px solid #dee2e6;
         border-radius: 8px;
-        margin: 0.5rem 0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+        padding: 1rem;
+        font-size: 0.85rem;
+        color: #495057;
     }
     
-    /* Status indicators */
-    .status-green { color: #28a745; font-weight: bold; }
-    .status-yellow { color: #ffc107; font-weight: bold; }
-    .status-red { color: #dc3545; font-weight: bold; }
-    
-    /* Hide Streamlit branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
-    /* Responsive columns */
-    @media (max-width: 768px) {
-        .row-widget.stHorizontal {
-            flex-direction: column;
-        }
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================
-# SESSION STATE INITIALIZATION
+# PROFESSION DATA (FFS Baselines)
 # ============================================================
-if 'leaderboard' not in st.session_state:
-    st.session_state.leaderboard = [
-        {"name": "Dr. Nkosi", "score": 87, "timestamp": "2026-02-03 09:15"},
-        {"name": "Prof. Van der Berg", "score": 82, "timestamp": "2026-02-03 09:22"},
-        {"name": "Ms. Dlamini", "score": 79, "timestamp": "2026-02-03 09:30"},
-    ]
-
-if 'ngt_votes' not in st.session_state:
-    st.session_state.ngt_votes = {
-        "Minimal (R80)": 0,
-        "Optimal (R120)": 0,
-        "Comprehensive (R200)": 0
+PROFESSIONS = {
+    "Clinical Psychologist": {
+        "default_fee": 1200,
+        "default_patients": 6,
+        "default_costs": 25,
+        "ctc": 900000,
+        "can_supervise": True,
+        "scope": "Full diagnostic & therapeutic scope"
+    },
+    "Counselling Psychologist": {
+        "default_fee": 1000,
+        "default_patients": 7,
+        "default_costs": 25,
+        "ctc": 800000,
+        "can_supervise": True,
+        "scope": "Therapeutic interventions, no neuro/forensic"
+    },
+    "Educational Psychologist": {
+        "default_fee": 1100,
+        "default_patients": 5,
+        "default_costs": 30,
+        "ctc": 850000,
+        "can_supervise": True,
+        "scope": "Learning & developmental assessments"
+    },
+    "Registered Counsellor": {
+        "default_fee": 650,
+        "default_patients": 8,
+        "default_costs": 20,
+        "ctc": 450000,
+        "can_supervise": False,
+        "scope": "Supportive counselling, no diagnosis"
+    },
+    "Mental Health Nurse": {
+        "default_fee": 450,
+        "default_patients": 12,
+        "default_costs": 15,
+        "ctc": 550000,
+        "can_supervise": False,
+        "scope": "Screening, medication support, triage"
     }
+}
 
-if 'user_name' not in st.session_state:
-    st.session_state.user_name = ""
-
-if 'submitted' not in st.session_state:
-    st.session_state.submitted = False
-
-# ============================================================
-# COST-TO-COMPANY RATES (Editable)
-# ============================================================
-DEFAULT_CTC = {
+# Team CTC rates
+TEAM_CTC = {
     "Clinical Psychologist": 900000,
     "Counselling Psychologist": 800000,
     "Registered Counsellor": 450000,
@@ -169,174 +198,186 @@ DEFAULT_CTC = {
 # ============================================================
 st.markdown("""
 <div class="main-header">
-    <h1>🧠 PsySSA NHI Mental Health Package Simulator</h1>
-    <p style="font-size: 1.1rem; margin: 0;">Design Your Ideal PHC Mental Health Package | NGT Workshop Tool</p>
-    <p style="font-size: 0.9rem; opacity: 0.9; margin-top: 0.5rem;">📅 February 3, 2026 | National Health Insurance Implementation</p>
+    <h1>🧠 NHI Mental Health Simulator</h1>
+    <p style="font-size: 1.1rem; margin: 0;">Compare Your FFS Income vs Capitation Team Model</p>
+    <p style="font-size: 0.9rem; opacity: 0.9; margin-top: 0.5rem;">February 2026 | National Health Insurance</p>
 </div>
 """, unsafe_allow_html=True)
 
 # ============================================================
-# SIDEBAR - INPUT CONTROLS
+# SIDEBAR - INPUTS
 # ============================================================
 with st.sidebar:
-    st.markdown("### 👤 Your Details")
-    user_name = st.text_input("Your Name (for Leaderboard)", value=st.session_state.user_name)
-    st.session_state.user_name = user_name
+    st.markdown("## 👤 Your Profile")
+    
+    # Profession Selection
+    profession = st.selectbox(
+        "Your Profession",
+        options=list(PROFESSIONS.keys()),
+        index=0,
+        help="Select your current profession for FFS baseline"
+    )
+    
+    prof_data = PROFESSIONS[profession]
     
     st.markdown("---")
     
-    # Quick Scenario Buttons
-    st.markdown("### ⚡ Quick Scenarios")
-    col1, col2, col3 = st.columns(3)
+    # ========== FFS SECTION ==========
+    st.markdown("## 💼 Your Current FFS Practice")
     
-    if col1.button("Minimal\nR80", use_container_width=True):
-        st.session_state.scenario = "minimal"
-    if col2.button("Optimal\nR120", use_container_width=True):
-        st.session_state.scenario = "optimal"
-    if col3.button("Dream\nR200", use_container_width=True):
-        st.session_state.scenario = "dream"
+    ffs_patients = st.slider(
+        "Patients per Day",
+        min_value=1,
+        max_value=40,
+        value=prof_data["default_patients"],
+        help="Average number of patients you see daily"
+    )
     
-    # Apply scenario defaults
-    scenario = st.session_state.get('scenario', 'optimal')
+    ffs_fee = st.slider(
+        "Average Fee (R)",
+        min_value=100,
+        max_value=2500,
+        value=prof_data["default_fee"],
+        step=50,
+        format="R%d"
+    )
     
-    if scenario == "minimal":
-        default_pop, default_cap, default_util, default_sess = 80000, 80, 3, 4
-        default_clin, default_couns, default_reg, default_nurse, default_chw = 0.5, 0.5, 10, 0.5, 4
-    elif scenario == "dream":
-        default_pop, default_cap, default_util, default_sess = 80000, 200, 6, 6
-        default_clin, default_couns, default_reg, default_nurse, default_chw = 1.5, 1.0, 20, 1.5, 6
-    else:  # optimal
-        default_pop, default_cap, default_util, default_sess = 80000, 120, 4, 5
-        default_clin, default_couns, default_reg, default_nurse, default_chw = 1.0, 0.5, 12, 1.0, 4
+    ffs_costs_pct = st.slider(
+        "Cost of Sales (%)",
+        min_value=0,
+        max_value=100,
+        value=prof_data["default_costs"],
+        help="Room rental, admin, materials as % of turnover"
+    )
     
     st.markdown("---")
     
-    # Budget Parameters
-    st.markdown("### 💰 Budget Parameters")
+    # ========== CAPITATION SECTION ==========
+    st.markdown("## 🏥 Capitation Scenario")
     
     population = st.slider(
         "Population Covered",
-        min_value=50000,
+        min_value=1000,
         max_value=100000,
-        value=default_pop,
-        step=5000,
-        format="%d",
-        help="Population size for catchment area"
+        value=80000,
+        step=1000,
+        format="%d"
     )
     
     capitation = st.slider(
         "Capitation Rate (R/person/year)",
-        min_value=80,
-        max_value=200,
-        value=default_cap,
+        min_value=10,
+        max_value=500,
+        value=120,
         step=10,
         format="R%d"
     )
     
-    utilization = st.slider(
-        "Expected Utilization (%)",
-        min_value=2.0,
+    utilization_base = st.slider(
+        "Base Utilization (%)",
+        min_value=1.0,
         max_value=10.0,
-        value=float(default_util),
+        value=4.0,
         step=0.5,
         format="%.1f%%",
         help="% of population accessing services annually"
     )
     
-    sessions_per_user = st.slider(
-        "Avg Sessions per User",
-        min_value=3,
-        max_value=8,
-        value=default_sess,
-        help="Average treatment episodes"
+    st.markdown("---")
+    
+    # ========== HEALTH PROMOTION ==========
+    st.markdown("## 🌱 Health Promotion Effort")
+    
+    health_promo = st.slider(
+        "Prevention Investment (%)",
+        min_value=0,
+        max_value=50,
+        value=10,
+        step=5,
+        help="Higher investment reduces utilization over time"
     )
     
-    st.markdown("---")
+    # Calculate utilization reduction (5-10% reduction per 10% effort)
+    utilization_reduction = health_promo * 0.075  # 7.5% reduction per 10% effort (midpoint of 5-10%)
+    effective_utilization = utilization_base * (1 - utilization_reduction / 100)
     
-    # Service Mix
-    st.markdown("### 📋 Service Mix (%)")
-    st.caption("Allocate session types (auto-normalizes to 100%)")
-    
-    screening_raw = st.slider("Screening & Assessment", 10, 30, 15)
-    brief_raw = st.slider("Brief Therapy (1-6 sessions)", 40, 70, 55)
-    groups_raw = st.slider("Group Interventions", 10, 30, 20)
-    crisis_raw = st.slider("Crisis/MDT Referral", 5, 15, 10)
-    
-    # Normalize to 100%
-    total_raw = screening_raw + brief_raw + groups_raw + crisis_raw
-    screening_pct = screening_raw / total_raw * 100
-    brief_pct = brief_raw / total_raw * 100
-    groups_pct = groups_raw / total_raw * 100
-    crisis_pct = crisis_raw / total_raw * 100
+    if health_promo > 0:
+        st.info(f"📉 Utilization reduced: {utilization_base:.1f}% → {effective_utilization:.1f}%")
     
     st.markdown("---")
     
-    # Team Composition
-    st.markdown("### 👥 Team Composition (FTE)")
+    # ========== TEAM COMPOSITION ==========
+    st.markdown("## 👥 Capitation Team (FTE)")
     
     clin_psych = st.slider(
         "Clinical Psychologists",
-        min_value=0.5,
+        min_value=0.0,
         max_value=2.0,
-        value=default_clin,
+        value=1.0,
         step=0.25,
-        format="%.2f FTE"
+        format="%.2f"
     )
     
     couns_psych = st.slider(
         "Counselling Psychologists",
         min_value=0.0,
-        max_value=1.5,
-        value=default_couns,
+        max_value=2.0,
+        value=0.5,
         step=0.25,
-        format="%.2f FTE"
+        format="%.2f"
     )
     
     reg_counsellors = st.slider(
         "Registered Counsellors",
-        min_value=8,
+        min_value=0,
         max_value=25,
-        value=default_reg,
+        value=10,
         step=1,
-        format="%d FTE"
+        help="HPCSA: Max 10:1 supervision ratio"
     )
     
     mh_nurses = st.slider(
         "Mental Health Nurses",
-        min_value=0.5,
-        max_value=2.0,
-        value=default_nurse,
-        step=0.25,
-        format="%.2f FTE"
+        min_value=0.0,
+        max_value=3.0,
+        value=1.0,
+        step=0.5,
+        format="%.1f"
     )
     
     chws = st.slider(
         "Community Health Workers",
-        min_value=2,
-        max_value=8,
-        value=default_chw,
-        step=1,
-        format="%d FTE"
+        min_value=0,
+        max_value=10,
+        value=4,
+        step=1
     )
     
     st.markdown("---")
     
-    # Editable CTC Table
-    st.markdown("### 💵 Cost-to-Company Rates")
-    with st.expander("Edit Annual Salaries (R)"):
-        ctc_clin = st.number_input("Clinical Psych", value=DEFAULT_CTC["Clinical Psychologist"], step=50000)
-        ctc_couns = st.number_input("Counselling Psych", value=DEFAULT_CTC["Counselling Psychologist"], step=50000)
-        ctc_reg = st.number_input("Reg Counsellor", value=DEFAULT_CTC["Registered Counsellor"], step=25000)
-        ctc_nurse = st.number_input("MH Nurse", value=DEFAULT_CTC["Mental Health Nurse"], step=25000)
-        ctc_chw = st.number_input("CHW", value=DEFAULT_CTC["Community Health Worker"], step=10000)
+    # Edit CTC rates
+    st.markdown("## 💵 Edit Annual Salaries")
+    with st.expander("Adjust CTC Rates (R)"):
+        ctc_clin = st.number_input("Clinical Psych CTC", value=TEAM_CTC["Clinical Psychologist"], step=50000)
+        ctc_couns = st.number_input("Counselling Psych CTC", value=TEAM_CTC["Counselling Psychologist"], step=50000)
+        ctc_reg = st.number_input("Registered Counsellor CTC", value=TEAM_CTC["Registered Counsellor"], step=25000)
+        ctc_nurse = st.number_input("MH Nurse CTC", value=TEAM_CTC["Mental Health Nurse"], step=25000)
+        ctc_chw = st.number_input("CHW CTC", value=TEAM_CTC["Community Health Worker"], step=10000)
 
 # ============================================================
 # CALCULATIONS
 # ============================================================
-# Total Budget
-total_budget = population * capitation
 
-# Team Costs
+# FFS Calculations
+working_days = 250
+ffs_turnover = ffs_patients * ffs_fee * working_days
+ffs_costs = ffs_turnover * (ffs_costs_pct / 100)
+ffs_income = ffs_turnover - ffs_costs
+
+# Capitation Calculations
+cap_total_budget = population * capitation
+
+# Team costs
 team_costs = {
     "Clinical Psychologist": clin_psych * ctc_clin,
     "Counselling Psychologist": couns_psych * ctc_couns,
@@ -345,532 +386,436 @@ team_costs = {
     "Community Health Worker": chws * ctc_chw
 }
 total_team_cost = sum(team_costs.values())
-team_cost_pct = (total_team_cost / total_budget) * 100 if total_budget > 0 else 0
 
-# Service Calculations
-users_covered = int(population * (utilization / 100))
-total_sessions = users_covered * sessions_per_user
-per_capita_cost = capitation
+# Other costs (admin, consumables) - estimate 15% of remaining budget
+remaining_after_team = cap_total_budget - total_team_cost
+other_costs = max(0, remaining_after_team * 0.15)
 
-# Sessions by type
-sessions_screening = int(total_sessions * (screening_pct / 100))
-sessions_brief = int(total_sessions * (brief_pct / 100))
-sessions_groups = int(total_sessions * (groups_pct / 100))
-sessions_crisis = int(total_sessions * (crisis_pct / 100))
+cap_total_costs = total_team_cost + other_costs
+cap_income = cap_total_budget - cap_total_costs
 
-# Coverage ratio (1:X compared to national 1:80,000)
-total_psychs = clin_psych + couns_psych
-if total_psychs > 0:
-    coverage_ratio = population / total_psychs
+# Service metrics
+users_covered = int(population * (effective_utilization / 100))
+visits_per_user = 4  # Standard assumption
+total_visits = users_covered * visits_per_user
+visits_per_day = total_visits / working_days
+
+# Supervision ratios
+total_supervisors = clin_psych + couns_psych
+if total_supervisors > 0:
+    supervision_ratio = reg_counsellors / total_supervisors
 else:
-    coverage_ratio = float('inf')
+    supervision_ratio = float('inf') if reg_counsellors > 0 else 0
 
-# Task-shift ratio (Counsellors : Psychologists)
-if total_psychs > 0:
-    task_shift_ratio = reg_counsellors / total_psychs
-else:
-    task_shift_ratio = float('inf')
+# Income comparison
+income_difference = cap_income - ffs_income
+income_difference_pct = (income_difference / ffs_income * 100) if ffs_income > 0 else 0
 
-# ============================================================
-# FEASIBILITY SCORE CALCULATION
-# ============================================================
-def calculate_feasibility_score():
-    score = 0
-    breakdown = {}
-    badges = []
-    
-    # Budget Fit (40 pts) - Team cost < 75% of budget
-    if team_cost_pct < 60:
-        budget_score = 40
-        badges.append(("🥷 Budget Ninja", "gold"))
-    elif team_cost_pct < 75:
-        budget_score = 35
-    elif team_cost_pct < 85:
-        budget_score = 25
-    elif team_cost_pct < 95:
-        budget_score = 15
-    else:
-        budget_score = 5
-    breakdown["Budget Fit"] = budget_score
-    score += budget_score
-    
-    # Coverage (30 pts) - Utilization > 4%
-    if utilization >= 6:
-        coverage_score = 30
-        badges.append(("🦸 Reach Hero", "green"))
-    elif utilization >= 5:
-        coverage_score = 25
-    elif utilization >= 4:
-        coverage_score = 20
-    elif utilization >= 3:
-        coverage_score = 12
-    else:
-        coverage_score = 5
-    breakdown["Coverage"] = coverage_score
-    score += coverage_score
-    
-    # Task-Shifting (20 pts) - Counsellors > Psychs at 8:1
-    if task_shift_ratio >= 10:
-        task_score = 20
-        badges.append(("⚖️ Task-Shift Champion", "blue"))
-    elif task_shift_ratio >= 8:
-        task_score = 18
-    elif task_shift_ratio >= 6:
-        task_score = 14
-    elif task_shift_ratio >= 4:
-        task_score = 10
-    else:
-        task_score = 5
-    breakdown["Task-Shifting"] = task_score
-    score += task_score
-    
-    # Efficiency (10 pts) - Sessions per user < 6
-    if sessions_per_user <= 4:
-        eff_score = 10
-        badges.append(("⚡ Efficiency Expert", "silver"))
-    elif sessions_per_user <= 5:
-        eff_score = 8
-    elif sessions_per_user <= 6:
-        eff_score = 6
-    else:
-        eff_score = 3
-    breakdown["Efficiency"] = eff_score
-    score += eff_score
-    
-    # Bonus: mhGAP alignment check
-    if groups_pct >= 15 and mh_nurses >= 1.0:
-        badges.append(("📋 mhGAP Aligned", "green"))
-    
-    return score, breakdown, badges
-
-score, score_breakdown, badges = calculate_feasibility_score()
+# Workload comparison
+ffs_workload = ffs_patients
+cap_workload = visits_per_day / max(1, (clin_psych + couns_psych + reg_counsellors + mh_nurses)) if (clin_psych + couns_psych + reg_counsellors + mh_nurses) > 0 else visits_per_day
 
 # ============================================================
-# MAIN DASHBOARD - METRICS ROW
+# COMPETENCY WARNINGS
 # ============================================================
-st.markdown("## 📊 Your Package Overview")
+warnings = []
+dangers = []
+successes = []
 
-col1, col2, col3, col4 = st.columns(4)
+# HPCSA Supervision ratio check (max 10:1)
+if supervision_ratio > 10:
+    dangers.append(f"🔴 **HPCSA Violation:** Supervision ratio {supervision_ratio:.1f}:1 exceeds maximum 10:1. Add more psychologists or reduce counsellors.")
+elif supervision_ratio > 8:
+    warnings.append(f"⚠️ **Supervision stretched:** Ratio {supervision_ratio:.1f}:1 approaching HPCSA limit of 10:1")
+elif reg_counsellors > 0 and total_supervisors > 0:
+    successes.append(f"✓ Supervision ratio {supervision_ratio:.1f}:1 within HPCSA guidelines")
 
-with col1:
-    st.metric(
-        label="💰 Total Budget",
-        value=f"R{total_budget/1e6:.1f}M",
-        delta=f"R{capitation}/capita"
-    )
+# No supervisors but have counsellors
+if reg_counsellors > 0 and total_supervisors == 0:
+    dangers.append("🔴 **No supervision:** Registered Counsellors require psychologist supervision. Add Clinical or Counselling Psychologists.")
 
-with col2:
-    # Team cost status color
-    if team_cost_pct < 70:
-        status = "🟢"
-    elif team_cost_pct < 85:
-        status = "🟡"
-    else:
-        status = "🔴"
+# No crisis capacity
+if mh_nurses == 0 and clin_psych == 0:
+    warnings.append("⚠️ **Limited crisis capacity:** Consider adding MH Nurse or Clinical Psychologist for emergencies")
+
+# CHW alone cannot deliver clinical services
+if chws > 0 and (clin_psych + couns_psych + reg_counsellors + mh_nurses) == 0:
+    dangers.append("🔴 **CHWs cannot work alone:** Community Health Workers require clinical supervision and cannot deliver therapy")
+
+# Budget overrun
+team_cost_pct = (total_team_cost / cap_total_budget * 100) if cap_total_budget > 0 else 0
+if team_cost_pct > 95:
+    dangers.append(f"🔴 **Budget overrun:** Team costs ({team_cost_pct:.0f}%) exceed available budget")
+elif team_cost_pct > 85:
+    warnings.append(f"⚠️ **Budget tight:** Team costs at {team_cost_pct:.0f}% of budget. Little room for consumables/admin.")
+elif team_cost_pct < 70:
+    successes.append(f"✓ Budget healthy: Team costs {team_cost_pct:.0f}% leaving room for operations")
+
+# Task shifting success
+if supervision_ratio >= 6 and supervision_ratio <= 10:
+    successes.append("✓ Good task-shifting: Leveraging counsellors effectively within safe supervision")
+
+# ============================================================
+# BADGES
+# ============================================================
+badges = []
+
+if cap_income > ffs_income * 1.1:
+    badges.append(("💰 Income Winner", "gold"))
     
-    st.metric(
-        label=f"👥 Team Cost {status}",
-        value=f"R{total_team_cost/1e6:.2f}M",
-        delta=f"{team_cost_pct:.1f}% of budget"
-    )
+if team_cost_pct < 65:
+    badges.append(("🎯 Budget Master", "green"))
 
-with col3:
-    st.metric(
-        label="🎯 Users Covered",
-        value=f"{users_covered:,}",
-        delta=f"{utilization:.1f}% utilization"
-    )
+if 6 <= supervision_ratio <= 10:
+    badges.append(("⚖️ Task-Shift Pro", "blue"))
 
-with col4:
-    st.metric(
-        label="📅 Total Sessions",
-        value=f"{total_sessions:,}",
-        delta=f"{sessions_per_user} per user"
-    )
+if health_promo >= 20 and effective_utilization < utilization_base * 0.85:
+    badges.append(("🌱 Prevention Champion", "green"))
+
+if cap_workload < ffs_workload * 0.7:
+    badges.append(("😌 Workload Winner", "blue"))
 
 # ============================================================
-# FEASIBILITY SCORE DISPLAY
+# MAIN DISPLAY
+# ============================================================
+
+# Two Column Layout: FFS vs Capitation
+col_ffs, col_cap = st.columns(2)
+
+with col_ffs:
+    st.markdown("### 💼 Your FFS Practice")
+    st.markdown(f"**Profession:** {profession}")
+    st.markdown(f"*{prof_data['scope']}*")
+    
+    st.markdown(f"""
+    <div class="income-card income-neutral">
+        <p style="margin:0; font-size: 0.9rem;">Annual FFS Income</p>
+        <p class="income-value">R{ffs_income:,.0f}</p>
+        <p style="margin:0; font-size: 0.85rem;">
+            {ffs_patients} pts/day × R{ffs_fee} × 250 days<br>
+            minus {ffs_costs_pct}% costs
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.metric("Daily Workload", f"{ffs_patients} patients")
+    st.metric("Annual Reach", f"{ffs_patients * working_days:,} consultations")
+
+with col_cap:
+    st.markdown("### 🏥 Capitation Team Model")
+    st.markdown(f"**Population:** {population:,} | **Rate:** R{capitation}/person/year")
+    
+    # Color based on comparison
+    if cap_income > ffs_income:
+        card_class = "income-green"
+        comparison_text = f"+R{income_difference:,.0f} ({income_difference_pct:+.1f}%)"
+    elif cap_income < ffs_income:
+        card_class = "income-red"
+        comparison_text = f"R{income_difference:,.0f} ({income_difference_pct:.1f}%)"
+    else:
+        card_class = "income-neutral"
+        comparison_text = "Same as FFS"
+    
+    st.markdown(f"""
+    <div class="income-card {card_class}">
+        <p style="margin:0; font-size: 0.9rem;">Annual Capitation Income</p>
+        <p class="income-value">R{cap_income:,.0f}</p>
+        <p style="margin:0; font-size: 0.85rem;">
+            vs FFS: {comparison_text}
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.metric("Team Workload", f"{cap_workload:.1f} pts/day each")
+    st.metric("Population Reach", f"{users_covered:,} users/year")
+
+# ============================================================
+# COMPARISON VISUALIZATION
 # ============================================================
 st.markdown("---")
+st.markdown("## 📊 Side-by-Side Comparison")
+
+col_chart, col_insights = st.columns([2, 1])
+
+with col_chart:
+    # Create comparison bar chart
+    comparison_data = pd.DataFrame({
+        'Metric': ['Annual Income', 'Daily Workload', 'Annual Reach'],
+        'FFS': [ffs_income, ffs_patients, ffs_patients * working_days],
+        'Capitation': [cap_income, cap_workload, users_covered]
+    })
+    
+    # Income comparison
+    fig_income = go.Figure()
+    
+    fig_income.add_trace(go.Bar(
+        name='FFS',
+        x=['Income (R)', 'Workload (pts/day)', 'Reach (users/yr)'],
+        y=[ffs_income/1000000, ffs_patients, (ffs_patients * working_days)/1000],
+        marker_color='#6c757d',
+        text=[f'R{ffs_income/1000000:.2f}M', f'{ffs_patients}', f'{(ffs_patients * working_days)/1000:.1f}k'],
+        textposition='outside'
+    ))
+    
+    fig_income.add_trace(go.Bar(
+        name='Capitation',
+        x=['Income (R)', 'Workload (pts/day)', 'Reach (users/yr)'],
+        y=[cap_income/1000000, cap_workload, users_covered/1000],
+        marker_color='#28a745' if cap_income >= ffs_income else '#dc3545',
+        text=[f'R{cap_income/1000000:.2f}M', f'{cap_workload:.1f}', f'{users_covered/1000:.1f}k'],
+        textposition='outside'
+    ))
+    
+    fig_income.update_layout(
+        barmode='group',
+        height=350,
+        margin=dict(l=20, r=20, t=40, b=20),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        yaxis_title="Value (millions/units/thousands)",
+        showlegend=True
+    )
+    
+    st.plotly_chart(fig_income, use_container_width=True)
+
+with col_insights:
+    st.markdown("### 💡 Key Insights")
+    
+    # Income insight
+    if cap_income > ffs_income:
+        st.markdown(f"""
+        <div class="success-box">
+            <strong>Income:</strong> Capitation earns <span class="comparison-better">R{income_difference:,.0f} MORE</span> per year
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div class="danger-box">
+            <strong>Income:</strong> Capitation earns <span class="comparison-worse">R{abs(income_difference):,.0f} LESS</span> per year
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Workload insight
+    workload_change = ((cap_workload - ffs_patients) / ffs_patients * 100) if ffs_patients > 0 else 0
+    if cap_workload < ffs_patients:
+        st.markdown(f"""
+        <div class="success-box">
+            <strong>Workload:</strong> <span class="comparison-better">{abs(workload_change):.0f}% lighter</span> with team support
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div class="warning-box">
+            <strong>Workload:</strong> {workload_change:.0f}% heavier - consider more team members
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Reach insight
+    reach_multiple = users_covered / (ffs_patients * working_days) if (ffs_patients * working_days) > 0 else 0
+    st.markdown(f"""
+    <div class="info-box">
+        <strong>Reach:</strong> Serve <span style="color: #1E5F8A; font-weight: bold;">{reach_multiple:.1f}x more people</span> with capitation
+    </div>
+    """, unsafe_allow_html=True)
+
+# ============================================================
+# COMPETENCY WARNINGS SECTION
+# ============================================================
+if dangers or warnings or successes:
+    st.markdown("---")
+    st.markdown("## ⚠️ Competency & Safety Checks")
+    
+    for danger in dangers:
+        st.markdown(f'<div class="danger-box">{danger}</div>', unsafe_allow_html=True)
+    
+    for warning in warnings:
+        st.markdown(f'<div class="warning-box">{warning}</div>', unsafe_allow_html=True)
+    
+    for success in successes:
+        st.markdown(f'<div class="success-box">{success}</div>', unsafe_allow_html=True)
+
+# ============================================================
+# BADGES SECTION
+# ============================================================
+if badges:
+    st.markdown("---")
+    st.markdown("## 🏆 Achievements")
+    badge_html = ""
+    for badge_name, badge_type in badges:
+        badge_html += f'<span class="badge badge-{badge_type}">{badge_name}</span> '
+    st.markdown(badge_html, unsafe_allow_html=True)
+
+# ============================================================
+# VALUE SCORE
+# ============================================================
+st.markdown("---")
+st.markdown("## 📈 Value Score")
 
 col_score, col_breakdown = st.columns([1, 2])
 
 with col_score:
-    # Score color based on value
-    if score >= 80:
+    # Calculate value score
+    value_score = 0
+    
+    # Income component (40 pts)
+    if cap_income > ffs_income * 1.15:
+        income_pts = 40
+    elif cap_income > ffs_income:
+        income_pts = 30
+    elif cap_income > ffs_income * 0.9:
+        income_pts = 20
+    else:
+        income_pts = 10
+    value_score += income_pts
+    
+    # Quality/Safety (30 pts)
+    quality_pts = 30
+    if len(dangers) > 0:
+        quality_pts = 5
+    elif len(warnings) > 0:
+        quality_pts = 20
+    value_score += quality_pts
+    
+    # Workload (15 pts)
+    if cap_workload < ffs_patients * 0.6:
+        workload_pts = 15
+    elif cap_workload < ffs_patients * 0.8:
+        workload_pts = 12
+    elif cap_workload < ffs_patients:
+        workload_pts = 8
+    else:
+        workload_pts = 3
+    value_score += workload_pts
+    
+    # Reach (15 pts)
+    if reach_multiple > 5:
+        reach_pts = 15
+    elif reach_multiple > 3:
+        reach_pts = 12
+    elif reach_multiple > 1.5:
+        reach_pts = 8
+    else:
+        reach_pts = 4
+    value_score += reach_pts
+    
+    # Display score
+    if value_score >= 80:
         score_color = "#28a745"
-        grade = "A"
-    elif score >= 65:
-        score_color = "#17a2b8"
-        grade = "B"
-    elif score >= 50:
+    elif value_score >= 60:
         score_color = "#ffc107"
-        grade = "C"
     else:
         score_color = "#dc3545"
-        grade = "D"
     
     st.markdown(f"""
-    <div class="score-card">
-        <h3 style="margin: 0;">🏆 Feasibility Score</h3>
-        <div class="score-value" style="color: {score_color};">{score}/100</div>
-        <p style="font-size: 1.5rem; margin: 0;">Grade: {grade}</p>
+    <div style="background: linear-gradient(135deg, #1E5F8A 0%, #2E8B57 100%); 
+                padding: 2rem; border-radius: 15px; text-align: center; color: white;">
+        <h3 style="margin: 0;">Value Score</h3>
+        <p style="font-size: 3.5rem; font-weight: bold; margin: 0.5rem 0; color: {score_color};">
+            {value_score}/100
+        </p>
+        <p style="margin: 0; opacity: 0.9;">Quality ÷ Cost Balance</p>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Badges
-    if badges:
-        st.markdown("#### 🎖️ Badges Earned")
-        badge_html = ""
-        for badge_name, badge_type in badges:
-            badge_html += f'<span class="badge badge-{badge_type}">{badge_name}</span> '
-        st.markdown(badge_html, unsafe_allow_html=True)
 
 with col_breakdown:
     st.markdown("#### Score Breakdown")
     
-    # Create breakdown chart
-    fig_breakdown = go.Figure(go.Bar(
-        x=list(score_breakdown.values()),
-        y=list(score_breakdown.keys()),
+    breakdown_data = {
+        'Component': ['Income vs FFS', 'Quality & Safety', 'Workload Balance', 'Population Reach'],
+        'Points': [income_pts, quality_pts, workload_pts, reach_pts],
+        'Max': [40, 30, 15, 15]
+    }
+    
+    fig_breakdown = go.Figure()
+    
+    # Add earned points
+    fig_breakdown.add_trace(go.Bar(
+        y=breakdown_data['Component'],
+        x=breakdown_data['Points'],
         orientation='h',
-        marker_color=['#1E5F8A', '#2E8B57', '#20B2AA', '#6495ED'],
-        text=[f"{v}/{'40' if k == 'Budget Fit' else '30' if k == 'Coverage' else '20' if k == 'Task-Shifting' else '10'}" 
-              for k, v in score_breakdown.items()],
+        name='Earned',
+        marker_color=['#28a745' if p >= m*0.7 else '#ffc107' if p >= m*0.4 else '#dc3545' 
+                      for p, m in zip(breakdown_data['Points'], breakdown_data['Max'])],
+        text=[f"{p}/{m}" for p, m in zip(breakdown_data['Points'], breakdown_data['Max'])],
         textposition='inside'
     ))
     
     fig_breakdown.update_layout(
         height=200,
         margin=dict(l=0, r=20, t=10, b=10),
-        xaxis_title="Points",
-        showlegend=False,
-        xaxis=dict(range=[0, 45])
+        xaxis=dict(range=[0, 45]),
+        showlegend=False
     )
     
     st.plotly_chart(fig_breakdown, use_container_width=True)
 
 # ============================================================
-# CHARTS ROW
+# TEAM COST BREAKDOWN
 # ============================================================
 st.markdown("---")
-st.markdown("## 📈 Visualizations")
+st.markdown("## 👥 Team Cost Breakdown")
 
-col_pie, col_bar, col_gauge = st.columns(3)
+col_table, col_pie = st.columns([1, 1])
 
-with col_pie:
-    st.markdown("#### 👥 Team Mix (by Cost)")
-    
-    fig_pie = px.pie(
-        values=list(team_costs.values()),
-        names=list(team_costs.keys()),
-        color_discrete_sequence=px.colors.sequential.Blues_r,
-        hole=0.4
-    )
-    fig_pie.update_layout(
-        height=300,
-        margin=dict(l=20, r=20, t=30, b=20),
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.3)
-    )
-    st.plotly_chart(fig_pie, use_container_width=True)
-
-with col_bar:
-    st.markdown("#### 📋 Service Allocation")
-    
-    service_data = pd.DataFrame({
-        'Service': ['Screening', 'Brief Therapy', 'Groups', 'Crisis/MDT'],
-        'Sessions': [sessions_screening, sessions_brief, sessions_groups, sessions_crisis],
-        'Percentage': [screening_pct, brief_pct, groups_pct, crisis_pct]
+with col_table:
+    team_df = pd.DataFrame({
+        'Role': [k for k, v in team_costs.items() if v > 0],
+        'FTE': [
+            clin_psych if k == "Clinical Psychologist" else
+            couns_psych if k == "Counselling Psychologist" else
+            reg_counsellors if k == "Registered Counsellor" else
+            mh_nurses if k == "Mental Health Nurse" else
+            chws
+            for k, v in team_costs.items() if v > 0
+        ],
+        'Annual Cost': [f"R{v:,.0f}" for k, v in team_costs.items() if v > 0]
     })
     
-    fig_bar = px.bar(
-        service_data,
-        x='Service',
-        y='Sessions',
-        color='Service',
-        color_discrete_sequence=['#1E5F8A', '#2E8B57', '#20B2AA', '#6495ED'],
-        text='Sessions'
-    )
-    fig_bar.update_layout(
-        height=300,
-        margin=dict(l=20, r=20, t=30, b=20),
-        showlegend=False
-    )
-    fig_bar.update_traces(texttemplate='%{text:,}', textposition='outside')
-    st.plotly_chart(fig_bar, use_container_width=True)
-
-with col_gauge:
-    st.markdown("#### 🎯 Coverage vs National (1:80k)")
+    if not team_df.empty:
+        st.dataframe(team_df, use_container_width=True, hide_index=True)
     
-    # Calculate gauge value (lower is better)
-    if coverage_ratio == float('inf'):
-        gauge_val = 0
-    else:
-        gauge_val = min(100, (80000 / coverage_ratio) * 100)
-    
-    fig_gauge = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=gauge_val,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': f"Coverage Index<br><span style='font-size:0.8em'>Your ratio: 1:{int(coverage_ratio):,}</span>"},
-        number={'suffix': "%"},
-        gauge={
-            'axis': {'range': [None, 150], 'tickwidth': 1},
-            'bar': {'color': "#2E8B57"},
-            'steps': [
-                {'range': [0, 50], 'color': '#ffcccc'},
-                {'range': [50, 100], 'color': '#ffffcc'},
-                {'range': [100, 150], 'color': '#ccffcc'}
-            ],
-            'threshold': {
-                'line': {'color': "red", 'width': 4},
-                'thickness': 0.75,
-                'value': 100
-            }
-        }
-    ))
-    fig_gauge.update_layout(
-        height=300,
-        margin=dict(l=20, r=20, t=50, b=20)
-    )
-    st.plotly_chart(fig_gauge, use_container_width=True)
+    st.markdown(f"""
+    | **Total Team Cost** | **R{total_team_cost:,.0f}** |
+    |---|---|
+    | Budget Available | R{cap_total_budget:,.0f} |
+    | Team % of Budget | {team_cost_pct:.1f}% |
+    | Remaining for Ops | R{cap_total_budget - total_team_cost:,.0f} |
+    """)
 
-# ============================================================
-# DETAILED TEAM BREAKDOWN
-# ============================================================
-st.markdown("---")
-st.markdown("## 👥 Team Composition Details")
-
-team_df = pd.DataFrame({
-    'Role': list(team_costs.keys()),
-    'FTE': [clin_psych, couns_psych, reg_counsellors, mh_nurses, chws],
-    'Annual Cost (R)': [f"R{v:,.0f}" for v in team_costs.values()],
-    'CTC Rate (R)': [f"R{ctc_clin:,}", f"R{ctc_couns:,}", f"R{ctc_reg:,}", f"R{ctc_nurse:,}", f"R{ctc_chw:,}"]
-})
-
-st.dataframe(
-    team_df,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "Role": st.column_config.TextColumn("Role", width="large"),
-        "FTE": st.column_config.NumberColumn("FTE", format="%.2f"),
-        "Annual Cost (R)": st.column_config.TextColumn("Annual Cost"),
-        "CTC Rate (R)": st.column_config.TextColumn("CTC Rate")
-    }
-)
-
-# Key ratios
-col_ratio1, col_ratio2, col_ratio3 = st.columns(3)
-
-with col_ratio1:
-    st.info(f"**Task-Shift Ratio:** {task_shift_ratio:.1f} Counsellors per Psychologist")
-
-with col_ratio2:
-    remaining_budget = total_budget - total_team_cost
-    st.success(f"**Remaining Budget:** R{remaining_budget/1e6:.2f}M ({100-team_cost_pct:.1f}%)")
-
-with col_ratio3:
-    if total_sessions > 0:
-        cost_per_session = total_team_cost / total_sessions
-        st.warning(f"**Cost per Session:** R{cost_per_session:.0f}")
-
-# ============================================================
-# LEADERBOARD & NGT VOTING
-# ============================================================
-st.markdown("---")
-col_leader, col_vote = st.columns(2)
-
-with col_leader:
-    st.markdown("## 🏆 Workshop Leaderboard")
-    
-    # Sort leaderboard
-    sorted_board = sorted(st.session_state.leaderboard, key=lambda x: x['score'], reverse=True)[:5]
-    
-    for i, entry in enumerate(sorted_board):
-        medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else "🏅"
-        st.markdown(f"""
-        <div class="leaderboard-entry">
-            <span>{medal} <strong>{entry['name']}</strong></span>
-            <span style="font-size: 1.2rem; font-weight: bold; color: #1E5F8A;">{entry['score']}</span>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Submit to leaderboard
-    st.markdown("---")
-    if st.button("📤 Submit My Score to Leaderboard", type="primary", use_container_width=True):
-        if user_name:
-            new_entry = {
-                "name": user_name,
-                "score": score,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M")
-            }
-            st.session_state.leaderboard.append(new_entry)
-            st.success(f"✅ Submitted! {user_name} - Score: {score}")
-            st.rerun()
-        else:
-            st.error("Please enter your name in the sidebar first!")
-
-with col_vote:
-    st.markdown("## 🗳️ NGT Consensus Vote")
-    st.markdown("*Vote for your preferred package level:*")
-    
-    # Current votes display
-    total_votes = sum(st.session_state.ngt_votes.values())
-    
-    if total_votes > 0:
-        fig_vote = px.bar(
-            x=list(st.session_state.ngt_votes.keys()),
-            y=list(st.session_state.ngt_votes.values()),
-            color=list(st.session_state.ngt_votes.keys()),
-            color_discrete_sequence=['#dc3545', '#ffc107', '#28a745']
+with col_pie:
+    if total_team_cost > 0:
+        pie_data = {k: v for k, v in team_costs.items() if v > 0}
+        fig_pie = px.pie(
+            values=list(pie_data.values()),
+            names=list(pie_data.keys()),
+            color_discrete_sequence=px.colors.sequential.Teal,
+            hole=0.4
         )
-        fig_vote.update_layout(
-            height=200,
-            margin=dict(l=20, r=20, t=10, b=10),
-            showlegend=False,
-            xaxis_title="",
-            yaxis_title="Votes"
+        fig_pie.update_layout(
+            height=300,
+            margin=dict(l=20, r=20, t=30, b=20),
+            showlegend=True,
+            legend=dict(orientation="h", yanchor="bottom", y=-0.2)
         )
-        st.plotly_chart(fig_vote, use_container_width=True)
-    
-    # Voting buttons
-    col_v1, col_v2, col_v3 = st.columns(3)
-    
-    if col_v1.button("🔴 Minimal\n(R80)", use_container_width=True):
-        st.session_state.ngt_votes["Minimal (R80)"] += 1
-        st.rerun()
-    
-    if col_v2.button("🟡 Optimal\n(R120)", use_container_width=True):
-        st.session_state.ngt_votes["Optimal (R120)"] += 1
-        st.rerun()
-    
-    if col_v3.button("🟢 Dream\n(R200)", use_container_width=True):
-        st.session_state.ngt_votes["Comprehensive (R200)"] += 1
-        st.rerun()
-    
-    st.markdown(f"**Total Votes:** {total_votes}")
+        st.plotly_chart(fig_pie, use_container_width=True)
 
 # ============================================================
-# EXPORT SECTION
+# ASSUMPTIONS PANEL
 # ============================================================
 st.markdown("---")
-st.markdown("## 📄 Export Your Package")
-
-def generate_summary():
-    """Generate a text summary for export"""
-    summary = f"""
-╔══════════════════════════════════════════════════════════════════╗
-║           PsySSA NHI MENTAL HEALTH PACKAGE SUMMARY               ║
-║                    Generated: {datetime.now().strftime("%Y-%m-%d %H:%M")}                    ║
-╚══════════════════════════════════════════════════════════════════╝
-
-📊 FEASIBILITY SCORE: {score}/100 (Grade {grade})
-
-🎖️ BADGES EARNED: {', '.join([b[0] for b in badges]) if badges else 'None'}
-
-═══════════════════════════════════════════════════════════════════
-💰 BUDGET PARAMETERS
-═══════════════════════════════════════════════════════════════════
-• Population Covered:    {population:,}
-• Capitation Rate:       R{capitation} per person per year
-• Total Budget:          R{total_budget/1e6:.2f}M
-• Expected Utilization:  {utilization:.1f}%
-• Users Covered:         {users_covered:,}
-
-═══════════════════════════════════════════════════════════════════
-👥 TEAM COMPOSITION
-═══════════════════════════════════════════════════════════════════
-• Clinical Psychologists:    {clin_psych:.2f} FTE @ R{ctc_clin:,} = R{team_costs['Clinical Psychologist']:,.0f}
-• Counselling Psychologists: {couns_psych:.2f} FTE @ R{ctc_couns:,} = R{team_costs['Counselling Psychologist']:,.0f}
-• Registered Counsellors:    {reg_counsellors} FTE @ R{ctc_reg:,} = R{team_costs['Registered Counsellor']:,.0f}
-• Mental Health Nurses:      {mh_nurses:.2f} FTE @ R{ctc_nurse:,} = R{team_costs['Mental Health Nurse']:,.0f}
-• Community Health Workers:  {chws} FTE @ R{ctc_chw:,} = R{team_costs['Community Health Worker']:,.0f}
-
-TOTAL TEAM COST: R{total_team_cost/1e6:.2f}M ({team_cost_pct:.1f}% of budget)
-Task-Shift Ratio: {task_shift_ratio:.1f} Counsellors per Psychologist
-
-═══════════════════════════════════════════════════════════════════
-📋 SERVICE MIX
-═══════════════════════════════════════════════════════════════════
-• Screening & Assessment:  {screening_pct:.1f}% ({sessions_screening:,} sessions)
-• Brief Therapy:           {brief_pct:.1f}% ({sessions_brief:,} sessions)
-• Group Interventions:     {groups_pct:.1f}% ({sessions_groups:,} sessions)
-• Crisis/MDT Referral:     {crisis_pct:.1f}% ({sessions_crisis:,} sessions)
-
-TOTAL SESSIONS: {total_sessions:,}
-Average Sessions per User: {sessions_per_user}
-
-═══════════════════════════════════════════════════════════════════
-📈 KEY METRICS
-═══════════════════════════════════════════════════════════════════
-• Coverage Ratio:          1:{int(coverage_ratio):,} (National benchmark: 1:80,000)
-• Cost per Session:        R{total_team_cost/total_sessions if total_sessions > 0 else 0:.0f}
-• Per Capita Spend:        R{capitation}
-• Remaining Budget:        R{(total_budget-total_team_cost)/1e6:.2f}M
-
-═══════════════════════════════════════════════════════════════════
-🏆 SCORE BREAKDOWN
-═══════════════════════════════════════════════════════════════════
-• Budget Fit:     {score_breakdown['Budget Fit']}/40 points
-• Coverage:       {score_breakdown['Coverage']}/30 points
-• Task-Shifting:  {score_breakdown['Task-Shifting']}/20 points
-• Efficiency:     {score_breakdown['Efficiency']}/10 points
-
-═══════════════════════════════════════════════════════════════════
-                   NHI Implementation Ready | PsySSA 2026
-═══════════════════════════════════════════════════════════════════
-"""
-    return summary
-
-col_exp1, col_exp2 = st.columns(2)
-
-with col_exp1:
-    summary_text = generate_summary()
-    st.download_button(
-        label="📥 Download Summary (TXT)",
-        data=summary_text,
-        file_name=f"MH_Package_{user_name or 'Anonymous'}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-        mime="text/plain",
-        use_container_width=True
-    )
-
-with col_exp2:
-    # JSON export for data portability
-    export_data = {
-        "user": user_name,
-        "timestamp": datetime.now().isoformat(),
-        "score": score,
-        "grade": grade,
-        "badges": [b[0] for b in badges],
-        "parameters": {
-            "population": population,
-            "capitation": capitation,
-            "utilization": utilization,
-            "sessions_per_user": sessions_per_user
-        },
-        "team": {
-            "clinical_psych_fte": clin_psych,
-            "counselling_psych_fte": couns_psych,
-            "registered_counsellors": reg_counsellors,
-            "mh_nurses": mh_nurses,
-            "chws": chws
-        },
-        "financials": {
-            "total_budget": total_budget,
-            "team_cost": total_team_cost,
-            "team_cost_pct": team_cost_pct
-        }
-    }
-    
-    st.download_button(
-        label="📊 Download Data (JSON)",
-        data=json.dumps(export_data, indent=2),
-        file_name=f"MH_Package_Data_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
-        mime="application/json",
-        use_container_width=True
-    )
+st.markdown(f"""
+<div class="assumptions-panel">
+    <h4 style="margin-top: 0;">📋 Assumptions</h4>
+    <ul style="margin-bottom: 0;">
+        <li><strong>Working days:</strong> 250 per year</li>
+        <li><strong>Visits per user:</strong> 4 average (adjustable utilization affects user count)</li>
+        <li><strong>Supervision ratio:</strong> HPCSA maximum 10 Registered Counsellors per Psychologist</li>
+        <li><strong>Health promotion:</strong> {health_promo}% effort reduces utilization by ~{utilization_reduction:.1f}%</li>
+        <li><strong>CTC rates:</strong> Private sector estimates (editable in sidebar)</li>
+        <li><strong>Other costs:</strong> 15% of remaining budget for admin/consumables</li>
+        <li><strong>No facility costs included</strong> - assumes existing infrastructure</li>
+    </ul>
+</div>
+""", unsafe_allow_html=True)
 
 # ============================================================
 # FOOTER
@@ -878,14 +823,13 @@ with col_exp2:
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666; padding: 1rem;">
-    <p>🧠 <strong>PsySSA NHI Mental Health Package Simulator</strong></p>
+    <p>🧠 <strong>NHI Mental Health: FFS vs Capitation Simulator</strong></p>
     <p style="font-size: 0.85rem;">
-        Built for the National Health Insurance Implementation | South Africa<br>
-        Workshop: February 3, 2026 | Powered by Streamlit
+        PsySSA Workshop | February 3, 2026<br>
+        National Health Insurance Implementation | South Africa
     </p>
     <p style="font-size: 0.75rem; opacity: 0.7;">
-        💡 Key Insight: Task-shifting to registered counsellors enables broader coverage while maintaining quality.<br>
-        📋 Reference: WHO mhGAP Guidelines | SA National Mental Health Policy Framework
+        💡 Key Insight: Task-shifting with proper supervision enables broader reach while maintaining quality and improving income.
     </p>
 </div>
 """, unsafe_allow_html=True)
