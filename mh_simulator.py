@@ -920,16 +920,24 @@ summary_text = (
 st.markdown("**Your Scenario Summary** (will be included in your email):")
 st.code(summary_text, language=None)
 
-# Validation
-can_submit = bool(participant_name and participant_email and "@" in participant_email)
+# Validation — strict email check (catch commas, spaces, missing domain)
+import re
+email_valid = bool(
+    participant_email
+    and re.match(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$', participant_email.strip())
+)
+can_submit = bool(participant_name and email_valid)
 
 if not participant_name:
     st.warning("⚠️ Please enter your **name** in the sidebar to submit.")
-if not participant_email or "@" not in str(participant_email):
-    st.warning("⚠️ Please enter a valid **email address** in the sidebar to receive your summary.")
+if participant_email and not email_valid:
+    st.error("❌ Invalid email address — please check for typos (commas, spaces, missing domain).")
+elif not participant_email:
+    st.warning("⚠️ Please enter your **email address** in the sidebar to receive your summary.")
 
 if can_submit:
-    # Build mailto link: to user, CC Prof Moosa with JSON
+    # Build mailto link: SHORT body (no JSON — browsers cap mailto at ~2000 chars)
+    clean_email = participant_email.strip()
     email_subject = f"NHI MH Simulator - {participant_name} ({profession}) - Score {value_score}/100"
     email_body = (
         f"NHI Mental Health Simulator - Your Scenario\n"
@@ -937,29 +945,29 @@ if can_submit:
         f"{summary_text}\n\n"
         f"{'=' * 50}\n"
         f"Submitted: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
-        f"PsySSA Workshop | 3 February 2026\n\n"
-        f"--- DATA (for workshop analysis) ---\n"
-        f"{json.dumps(submission_data, separators=(',', ':'))}\n"
+        f"PsySSA Workshop | 3 February 2026\n"
     )
 
     mailto_url = (
-        f"mailto:{participant_email}"
+        f"mailto:{clean_email}"
         f"?cc={WORKSHOP_COLLECTOR_EMAIL}"
         f"&subject={urllib.parse.quote(email_subject)}"
         f"&body={urllib.parse.quote(email_body)}"
     )
 
-    st.markdown(f"""
-    <div style="text-align: center; margin: 1rem 0;">
-        <a href="{mailto_url}" class="email-btn" target="_blank">
-            📧 Email My Summary
-        </a>
-    </div>
-    <p style="text-align: center; font-size: 0.85rem; color: #666; margin-top: 0.5rem;">
-        Opens your email app with your summary pre-filled.<br>
-        A copy is CC'd to Prof Moosa for workshop analysis.
-    </p>
-    """, unsafe_allow_html=True)
+    col_email, _ = st.columns([2, 1])
+    with col_email:
+        st.markdown(f"""
+        <div style="text-align: center; margin: 1rem 0;">
+            <a href="{mailto_url}" class="email-btn" target="_blank">
+                📧 Email My Summary
+            </a>
+        </div>
+        <p style="text-align: center; font-size: 0.85rem; color: #666; margin-top: 0.5rem;">
+            Opens your email app with summary pre-filled.<br>
+            CC'd to Prof Moosa for workshop analysis.
+        </p>
+        """, unsafe_allow_html=True)
 else:
     st.markdown("""
     <div style="text-align: center; padding: 1rem; background: #f0f0f0; border-radius: 8px; color: #999;">
