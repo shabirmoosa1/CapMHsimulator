@@ -1,34 +1,31 @@
 """
-🧠 NHI Mental Health: FFS vs Capitation Simulator v6
+🧠 Mental Health: FFS vs Capitation Simulator v7
 For PsySSA Workshop - February 3, 2026
 
-Author: Built for Prof Shabir Moosa, NHI Branch
-National Department of Health, South Africa
+Author: Prof Shabir Moosa
+Department of Family Medicine & PHC, University of Witwatersrand
 
-v6 changes from v5:
-1.  Default population auto-calculated from consults/day + default util/cap rate
-2.  "Your Required Consults/Day" hero metric: RED/YELLOW/GREEN as team absorbs load
-3.  MDT 20% deduction drives initial YELLOW → team additions push to GREEN
-4.  "patients per day" → "consults per day" everywhere
-5.  No JSON download, no printing — email submission only
-6.  Email summary to self (CC Prof Moosa with JSON behind the scenes)
-7.  Name + email required before submission
-8.  All v5 features preserved (FFS limits, challenge flags, value suggestions, etc.)
+v7 changes:
+1.  All NHI references removed; affiliated to Wits Family Medicine & PHC
+2.  'Cost of Sales' → 'Cost of Services' with Rand amount shown
+3.  All expenses/incomes displayed MONTHLY (inputs remain annual where natural)
+4.  Capitation cost of services = cost/consult × clinic visits (excl CHW)
+5.  Email submission removed; replaced with server-side CSV capture
+6.  Admin download with password for workshop facilitator
 """
 
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
-import json
-import urllib.parse
+import json, csv, os, re
 from datetime import datetime
 
 # ============================================================
 # PAGE CONFIG & STYLING
 # ============================================================
 st.set_page_config(
-    page_title="NHI Mental Health Simulator",
+    page_title="Mental Health Capitation Simulator",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -89,20 +86,17 @@ st.markdown("""
     .engaged-red { background: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
     .suggest-box { background: #e8f4fd; border-left: 4px solid #17a2b8; padding: 0.8rem 1rem;
         border-radius: 0 8px 8px 0; margin: 0.3rem 0; font-size: 0.9rem; }
-    .email-btn {
+    .submit-btn {
         display: inline-block; background: linear-gradient(135deg, #1E5F8A 0%, #2E8B57 100%);
-        color: white !important; padding: 0.8rem 2rem; border-radius: 8px; font-size: 1.1rem;
-        font-weight: bold; text-decoration: none; text-align: center; width: 100%;
-        box-sizing: border-box; cursor: pointer; border: none;
+        color: white; padding: 0.6rem 1.5rem; border-radius: 8px; font-size: 1rem;
+        font-weight: bold; border: none; cursor: pointer; width: 100%;
     }
-    .email-btn:hover { opacity: 0.9; color: white !important; }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    /* Disable printing */
     @media print {
         body * { display: none !important; }
         body::after {
-            content: "Printing is disabled. Please use the email submission feature in the simulator.";
+            content: "Printing is disabled. Please use the Submit button in the simulator.";
             display: block !important; padding: 2rem; font-size: 1.2rem; text-align: center;
         }
     }
@@ -114,8 +108,10 @@ st.markdown("""
 # ============================================================
 WORKING_DAYS = 250
 VISITS_PER_USER = 4
-DEFAULT_UTIL = 4.0       # default utilisation rate %
-DEFAULT_CAP_RATE = 120   # default capitation R/person/year
+DEFAULT_UTIL = 4.0
+DEFAULT_CAP_RATE = 120  # R/person/year
+SUBMISSIONS_FILE = "workshop_submissions.csv"
+ADMIN_PASSWORD = "PsySSA2026"
 
 PROFESSIONS = {
     "Clinical Psychologist": {
@@ -196,17 +192,14 @@ CHW_ENGAGEMENT_PER_YEAR = 2000
 UTILISATION_FLOOR = 1.5
 MDT_DUTY_FRACTION = 0.20
 
-# Workshop collection email (Prof Moosa)
-WORKSHOP_COLLECTOR_EMAIL = "shabir.moosa@health.gov.za"
-
 # ============================================================
 # HEADER
 # ============================================================
 st.markdown("""
 <div class="main-header">
-    <h1 style="margin:0;">🧠 NHI Mental Health Simulator</h1>
+    <h1 style="margin:0;">🧠 Mental Health Capitation Simulator</h1>
     <p style="font-size: 1.1rem; margin: 0.3rem 0 0 0;">Fee-for-Service Income vs Capitation Team Model</p>
-    <p style="font-size: 0.85rem; opacity: 0.85; margin: 0.3rem 0 0 0;">PsySSA Workshop | 3 February 2026 | National Health Insurance</p>
+    <p style="font-size: 0.85rem; opacity: 0.85; margin: 0.3rem 0 0 0;">PsySSA Workshop | 3 February 2026</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -214,11 +207,11 @@ st.markdown("""
 st.markdown("""
 <div class="guide-box">
     <b>How to explore this simulator:</b><br>
-    <b>①</b> Review your <b>current FFS practice</b> (fee, consults/day, costs) in the left panel<br>
+    <b>①</b> Review your <b>current FFS practice</b> (fee, consults/day, cost of services) in the left panel<br>
     <b>②</b> Watch <b>"Your Required Consults"</b> — it starts 🔴 RED. Add team members to bring it down to 🟢 GREEN<br>
     <b>③</b> Once GREEN, <b>increase population</b> for greater reach and budget — watch income grow<br>
     <b>④</b> Explore <b>health promotion</b> to extend reach beyond the clinic<br>
-    <b>⑤</b> When satisfied, <b>email your scenario</b> to yourself (Prof Moosa receives a copy for workshop debrief)
+    <b>⑤</b> When satisfied, <b>submit your scenario</b> for workshop analysis
 </div>
 """, unsafe_allow_html=True)
 
@@ -233,7 +226,6 @@ with st.sidebar:
     default_team = DEFAULT_TEAM_BY_PROFESSION[profession]
 
     participant_name = st.text_input("Your Name", help="Required to submit your scenario")
-    participant_email = st.text_input("Your Email", help="Required — your summary will be emailed here")
 
     st.markdown("---")
     st.markdown("## 💼 Your Current FFS Practice")
@@ -241,13 +233,19 @@ with st.sidebar:
         key=f"ffs_{profession}")
     ffs_fee = st.slider("Average Fee (R)", 100, 3500, prof_data["default_fee"], step=50,
         format="R%d", key=f"fee_{profession}")
-    ffs_costs_pct = st.slider("Cost of Sales (%)", 0, 100, prof_data["default_costs"],
+    ffs_costs_pct = st.slider("Cost of Services (%)", 0, 100, prof_data["default_costs"],
         help="Room rental, admin, materials as % of turnover", key=f"costs_{profession}")
+
+    # Show Rand amount for cost of services
+    _ffs_turnover_mo = ffs_consults * ffs_fee * WORKING_DAYS / 12
+    _ffs_cos_mo = _ffs_turnover_mo * (ffs_costs_pct / 100)
+    _cost_per_consult = ffs_fee * (ffs_costs_pct / 100)
+    st.caption(f"= **R{_ffs_cos_mo:,.0f}/month** (R{_cost_per_consult:,.0f} per consult)")
 
     st.markdown("---")
     st.markdown("## 🏥 Capitation Scenario")
 
-    # Auto-calculate default population to match FFS daily demand
+    # Auto-calculate default population
     default_pop = round(
         prof_data["default_consults"] * WORKING_DAYS
         / (DEFAULT_UTIL / 100 * VISITS_PER_USER)
@@ -260,6 +258,7 @@ with st.sidebar:
         format="%d", key=f"pop_{profession}")
     capitation = st.slider("Capitation Rate (R/person/year)", 10, 500, DEFAULT_CAP_RATE, step=10,
         format="R%d")
+    st.caption(f"= R{capitation/12:.0f}/person/month → Budget **R{population * capitation / 12:,.0f}/month**")
     utilization_rate = st.slider("Utilisation Rate (%)", 1.0, 10.0, DEFAULT_UTIL, step=0.5,
         format="%.1f%%", help="% of population accessing clinical services annually")
 
@@ -301,17 +300,25 @@ with st.sidebar:
         chw_ctc_val = st.number_input("CHW CTC", value=DEFAULT_CTC["Community Health Worker"], step=10000)
 
 # ============================================================
-# CALCULATIONS
+# CALCULATIONS — ALL MONTHLY
 # ============================================================
 
-# --- FFS ---
-ffs_turnover = ffs_consults * ffs_fee * WORKING_DAYS
-ffs_costs = ffs_turnover * (ffs_costs_pct / 100)
-ffs_income = ffs_turnover - ffs_costs
+# --- FFS (annual then monthly) ---
+ffs_turnover_annual = ffs_consults * ffs_fee * WORKING_DAYS
+ffs_cos_annual = ffs_turnover_annual * (ffs_costs_pct / 100)
+ffs_income_annual = ffs_turnover_annual - ffs_cos_annual
 ffs_annual_consultations = ffs_consults * WORKING_DAYS
 
-# --- Capitation budget ---
-cap_total_budget = population * capitation
+ffs_turnover_mo = ffs_turnover_annual / 12
+ffs_cos_mo = ffs_cos_annual / 12
+ffs_income_mo = ffs_income_annual / 12
+
+cost_per_consult = ffs_fee * (ffs_costs_pct / 100)
+
+# --- Capitation budget (monthly) ---
+cap_budget_annual = population * capitation
+cap_budget_mo = cap_budget_annual / 12
+
 team_costs = {
     "Psychiatrist": psychiatrist_fte * ctc_psych_md,
     "Clinical Psychologist": clin_psych * ctc_clin,
@@ -320,11 +327,22 @@ team_costs = {
     "Mental Health Nurse": mh_nurses * ctc_nurse,
     "Community Health Worker": auto_chws * chw_ctc_val
 }
-total_team_cost = sum(team_costs.values())
-remaining_after_team = cap_total_budget - total_team_cost
-other_costs = max(0, remaining_after_team * 0.15)
-cap_total_costs = total_team_cost + other_costs
-cap_income = cap_total_budget - cap_total_costs
+total_team_cost_annual = sum(team_costs.values())
+total_team_cost_mo = total_team_cost_annual / 12
+
+# --- Demand ---
+clinical_users = int(population * (effective_utilization / 100))
+total_visits_annual = clinical_users * VISITS_PER_USER
+visits_per_day = total_visits_annual / WORKING_DAYS
+total_visits_mo = total_visits_annual / 12
+
+# --- Capitation Cost of Services (v7: cost/consult × clinic visits, excl CHW) ---
+cap_cos_annual = cost_per_consult * total_visits_annual
+cap_cos_mo = cap_cos_annual / 12
+
+# --- Capitation income (monthly) ---
+cap_income_mo = cap_budget_mo - total_team_cost_mo - cap_cos_mo
+cap_income_annual = cap_income_mo * 12
 
 # --- MDT-adjusted clinical capacity ---
 your_capacity_raw = prof_data["daily_capacity"]
@@ -337,7 +355,6 @@ profession_fte_map = {
 }
 principal_in_team = profession_fte_map.get(profession, 0) > 0
 
-# Full team capacity (pre-MDT)
 full_team_capacity = (
     psychiatrist_fte * PROFESSIONS["Psychiatrist"]["daily_capacity"]
     + clin_psych * PROFESSIONS["Clinical Psychologist"]["daily_capacity"]
@@ -346,30 +363,17 @@ full_team_capacity = (
     + mh_nurses * PROFESSIONS["Mental Health Nurse"]["daily_capacity"]
 )
 
-# Deduct MDT for principal user
-mdt_capacity_loss = your_capacity_raw * MDT_DUTY_FRACTION if principal_in_team else 0
-team_daily_capacity = full_team_capacity - mdt_capacity_loss
+team_daily_capacity = full_team_capacity - (prof_data["daily_capacity"] * MDT_DUTY_FRACTION) if principal_in_team else full_team_capacity
 
-# --- Demand ---
-clinical_users = int(population * (effective_utilization / 100))
-total_visits = clinical_users * VISITS_PER_USER
-visits_per_day = total_visits / WORKING_DAYS
-
-# --- YOUR REQUIRED CONSULTS (v6 hero metric) ---
-# Proportional share: your fraction of team capacity × total demand
+# --- YOUR REQUIRED CONSULTS ---
 if team_daily_capacity > 0 and principal_in_team:
     your_fraction = your_daily_consults / team_daily_capacity
     your_required_consults = visits_per_day * your_fraction
 elif principal_in_team:
-    # You're in team but team capacity is 0 (shouldn't happen, but safety)
     your_required_consults = visits_per_day
 else:
     your_required_consults = 0
 
-# Color coding for Your Required Consults
-# RED: above your FFS workload (worse than solo)
-# YELLOW: between FFS level and your optimal capacity (improving but not there yet)
-# GREEN: at or below your adjusted capacity (sustainable)
 if your_required_consults > ffs_consults:
     consult_card_class = "consult-red"
     consult_status = "🔴 Above your FFS workload — add team members"
@@ -380,10 +384,9 @@ else:
     consult_card_class = "consult-green"
     consult_status = "✅ Sustainable workload — room to grow population"
 
-# Clinical FTEs
 clinical_ftes = psychiatrist_fte + clin_psych + couns_psych + reg_counsellors + mh_nurses
 
-# --- Average session length (weighted) ---
+# --- Average session length ---
 total_session_weighted = (
     psychiatrist_fte * PROFESSIONS["Psychiatrist"]["avg_session_min"]
     + clin_psych * PROFESSIONS["Clinical Psychologist"]["avg_session_min"]
@@ -403,10 +406,11 @@ clinical_contact_pct = (clinical_users / population * 100) if population > 0 els
 total_supervisors = clin_psych + couns_psych
 supervision_ratio = (reg_counsellors / total_supervisors) if total_supervisors > 0 else (float('inf') if reg_counsellors > 0 else 0)
 
-# --- Derived ---
-income_difference = cap_income - ffs_income
-income_difference_pct = (income_difference / ffs_income * 100) if ffs_income > 0 else 0
-team_cost_pct = (total_team_cost / cap_total_budget * 100) if cap_total_budget > 0 else 0
+# --- Derived (monthly) ---
+income_diff_mo = cap_income_mo - ffs_income_mo
+income_diff_pct = (income_diff_mo / ffs_income_mo * 100) if ffs_income_mo > 0 else 0
+team_cost_pct = (total_team_cost_mo / cap_budget_mo * 100) if cap_budget_mo > 0 else 0
+cos_pct_of_budget = (cap_cos_mo / cap_budget_mo * 100) if cap_budget_mo > 0 else 0
 people_needing_meds = int(clinical_users * 0.6)
 engagement_multiplier = total_population_engaged / max(1, ffs_annual_consultations)
 
@@ -477,7 +481,7 @@ if auto_chws > 0 and clinical_ftes == 0:
     team_illegal = True
 
 # ============================================================
-# SAFETY CHECKS LOGIC
+# SAFETY CHECKS
 # ============================================================
 if psychiatrist_fte == 0:
     dangers.append(f"🔴 <b>NO PSYCHIATRIST — NO MEDICATION</b>: ~{people_needing_meds:,} people needing psychiatric medication have no access. <i>→ Add even 0.05 FTE Psychiatrist in the sidebar.</i>")
@@ -498,12 +502,12 @@ if team_daily_capacity > 0 and visits_per_day > team_daily_capacity:
     dangers.append(f"🔴 <b>Demand exceeds capacity</b>: {visits_per_day:.0f} visits/day needed vs team capacity {team_daily_capacity:.0f}/day ({overload_pct:.0f}% overload). <i>→ Add team members or reduce population.</i>")
 elif team_daily_capacity > 0 and visits_per_day > team_daily_capacity * 0.85:
     warnings.append(f"⚠️ Team at {(visits_per_day/team_daily_capacity*100):.0f}% capacity — limited surge room")
-if team_cost_pct > 95:
-    dangers.append(f"🔴 <b>Budget overrun</b>: Team costs ({team_cost_pct:.0f}%) exceed budget. <i>→ Reduce FTEs or increase capitation rate.</i>")
-elif team_cost_pct > 85:
-    warnings.append(f"⚠️ Budget tight: Team costs at {team_cost_pct:.0f}% of budget")
-elif team_cost_pct < 70 and total_team_cost > 0:
-    successes.append(f"✓ Budget healthy: Team costs {team_cost_pct:.0f}% — room for operations")
+if (team_cost_pct + cos_pct_of_budget) > 95:
+    dangers.append(f"🔴 <b>Budget overrun</b>: Team ({team_cost_pct:.0f}%) + Cost of Services ({cos_pct_of_budget:.0f}%) exceed budget. <i>→ Reduce FTEs, increase capitation, or reduce cost of services %.</i>")
+elif (team_cost_pct + cos_pct_of_budget) > 85:
+    warnings.append(f"⚠️ Budget tight: Team + Cost of Services at {team_cost_pct + cos_pct_of_budget:.0f}% of budget")
+elif total_team_cost_mo > 0 and (team_cost_pct + cos_pct_of_budget) < 70:
+    successes.append(f"✓ Budget healthy: Team + CoS {team_cost_pct + cos_pct_of_budget:.0f}% — room for operations")
 if psychiatrist_fte > 0 and (clin_psych > 0 or couns_psych > 0) and mh_nurses > 0:
     successes.append("✓ <b>Comprehensive team</b>: Prescribing + diagnosis + therapy + nursing")
 if 6 <= supervision_ratio <= 10:
@@ -513,7 +517,7 @@ if 6 <= supervision_ratio <= 10:
 # VALUE SCORE + SUGGESTIONS
 # ============================================================
 value_score = 0
-income_pts = 30 if cap_income > ffs_income * 1.15 else 22 if cap_income > ffs_income else 15 if cap_income > ffs_income * 0.9 else 5
+income_pts = 30 if cap_income_mo > ffs_income_mo * 1.15 else 22 if cap_income_mo > ffs_income_mo else 15 if cap_income_mo > ffs_income_mo * 0.9 else 5
 value_score += income_pts
 
 quality_pts = 40
@@ -533,7 +537,7 @@ value_score += access_pts
 
 suggestions = []
 if income_pts <= 15:
-    suggestions.append("💰 <b>Income</b>: Increase population/capitation rate, or use more lower-cost team members (counsellors, nurses) to reduce costs")
+    suggestions.append("💰 <b>Income</b>: Increase population/capitation rate, or use more lower-cost team members to reduce costs")
 if quality_pts < 25:
     if psychiatrist_fte == 0:
         suggestions.append("💊 <b>Prescribing</b>: Add even 0.05–0.10 FTE psychiatrist — unlocks medication access for ~60% of users")
@@ -548,16 +552,14 @@ if workload_pts < 8:
 if access_pts < 8:
     suggestions.append("🌱 <b>Reach</b>: Increase health promotion effort — CHWs extend engagement into the community")
 
-# Challenge flags
 has_coverage_issues = len(services_cannot) > 0
 has_safety_issues = len(dangers) > 0
-has_impact_issues = (cap_income < ffs_income) or (pop_engaged_pct < 3)
+has_impact_issues = (cap_income_mo < ffs_income_mo) or (pop_engaged_pct < 3)
 
 # ============================================================
 # MAIN DISPLAY
 # ============================================================
 
-# --- Illegal team banner ---
 if team_illegal:
     st.markdown("""<div class="stop-box"><h3 style="margin:0; color: #ff6b6b;">⛔ TEAM CANNOT LEGALLY OPERATE</h3>
     <p style="margin: 0.5rem 0 0 0;">Current team composition violates HPCSA regulations. Adjust team members in the left panel.</p></div>""", unsafe_allow_html=True)
@@ -566,7 +568,7 @@ if team_illegal:
     st.markdown("---")
 
 # ============================================================
-# FFS BASELINE
+# FFS BASELINE (monthly)
 # ============================================================
 ffs_limits = FFS_LIMITATIONS.get(profession, [])
 limits_html = " · ".join(ffs_limits) if ffs_limits else "No specific limitations noted"
@@ -574,10 +576,10 @@ st.markdown(f"""
 <div class="ffs-ref-card">
     <h4>💼 Your FFS Baseline — {profession}</h4>
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
-        <div><span class="ffs-ref-value">R{ffs_income:,.0f}</span><span style="color: #6c757d;"> /year net income</span></div>
+        <div><span class="ffs-ref-value">R{ffs_income_mo:,.0f}</span><span style="color: #6c757d;"> /month net income</span></div>
         <div style="color: #6c757d; font-size: 0.9rem;">
-            {ffs_consults} consults/day &times; R{ffs_fee} &times; {WORKING_DAYS} days &minus; {ffs_costs_pct}% costs
-            &nbsp;|&nbsp; {ffs_annual_consultations:,} consultations/year
+            {ffs_consults} consults/day &times; R{ffs_fee} &times; {WORKING_DAYS} days &divide; 12
+            &minus; {ffs_costs_pct}% cost of services (R{ffs_cos_mo:,.0f}/mo)
         </div>
     </div>
     <div class="ffs-limits">
@@ -587,7 +589,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ============================================================
-# CAPITATION TEAM MODEL — HERO DASHBOARD
+# CAPITATION TEAM MODEL — HERO DASHBOARD (monthly)
 # ============================================================
 st.markdown("## 🏥 Capitation Team Model")
 
@@ -598,22 +600,23 @@ if principal_in_team:
 col_income, col_consults = st.columns([1, 1])
 
 with col_income:
-    if cap_income > ffs_income:
+    if cap_income_mo > ffs_income_mo:
         card_class = "income-green"
-        comparison_text = f"+R{income_difference:,.0f} ({income_difference_pct:+.1f}%) vs FFS"
-    elif cap_income >= 0:
+        comparison_text = f"+R{income_diff_mo:,.0f} ({income_diff_pct:+.1f}%) vs FFS"
+    elif cap_income_mo >= 0:
         card_class = "income-yellow"
-        comparison_text = f"R{income_difference:,.0f} ({income_difference_pct:.1f}%) below FFS"
+        comparison_text = f"R{income_diff_mo:,.0f} ({income_diff_pct:.1f}%) below FFS"
     else:
         card_class = "income-red"
-        comparison_text = f"R{income_difference:,.0f} — NET LOSS"
+        comparison_text = f"R{income_diff_mo:,.0f} — NET LOSS"
     st.markdown(f"""
     <div class="income-card {card_class}">
-        <p style="margin:0; font-size: 0.9rem;">Annual Capitation Income</p>
-        <p class="income-value">R{cap_income:,.0f}</p>
+        <p style="margin:0; font-size: 0.9rem;">Monthly Capitation Income</p>
+        <p class="income-value">R{cap_income_mo:,.0f}</p>
         <p style="margin:0; font-size: 0.85rem;">{comparison_text}</p>
         <p style="margin:0.3rem 0 0 0; font-size: 0.8rem; opacity: 0.85;">
-            Budget R{cap_total_budget:,.0f} &minus; Team R{total_team_cost:,.0f} &minus; Ops R{other_costs:,.0f}</p>
+            Budget R{cap_budget_mo:,.0f} &minus; Team R{total_team_cost_mo:,.0f}
+            &minus; Cost of Services R{cap_cos_mo:,.0f}</p>
     </div>""", unsafe_allow_html=True)
 
 with col_consults:
@@ -683,13 +686,13 @@ with col_cannot:
             st.markdown(f"<div class='coverage-warn'>{rw}</div>", unsafe_allow_html=True)
 
 # ============================================================
-# IMPACT INSIGHTS
+# IMPACT INSIGHTS (monthly)
 # ============================================================
 st.markdown("---")
 st.markdown("## 💡 Impact Insights")
 if has_impact_issues:
     flag_parts = []
-    if cap_income < ffs_income:
+    if cap_income_mo < ffs_income_mo:
         flag_parts.append("income below FFS")
     if pop_engaged_pct < 3:
         flag_parts.append("low population engagement")
@@ -697,20 +700,20 @@ if has_impact_issues:
 
 insight_cols = st.columns(2)
 with insight_cols[0]:
-    if cap_income > ffs_income:
+    if cap_income_mo > ffs_income_mo:
         st.markdown(f"""<div class="success-box insight-impact">
-            💰 <b>Earn R{income_difference:,.0f} MORE</b> per year while engaging
-            <b>{total_population_engaged:,} people</b> — a <b>{engagement_multiplier:.1f}× multiplier</b>
+            💰 <b>Earn R{income_diff_mo:,.0f} MORE per month</b> while engaging
+            <b>{total_population_engaged:,} people/year</b> — a <b>{engagement_multiplier:.1f}× multiplier</b>
             over your {ffs_annual_consultations:,} FFS consultations.</div>""", unsafe_allow_html=True)
-    elif cap_income >= 0:
+    elif cap_income_mo >= 0:
         st.markdown(f"""<div class="warning-box insight-impact">
-            💰 You earn <b>R{abs(income_difference):,.0f} less</b> than FFS — but engage
-            <b>{total_population_engaged:,} people</b> ({engagement_multiplier:.1f}× your FFS reach).
+            💰 You earn <b>R{abs(income_diff_mo):,.0f} less per month</b> than FFS — but engage
+            <b>{total_population_engaged:,} people/year</b> ({engagement_multiplier:.1f}× your FFS reach).
             <i>Consider adjusting team composition or capitation rate.</i></div>""", unsafe_allow_html=True)
     else:
         st.markdown(f"""<div class="danger-box insight-impact">
-            🚨 <b>Net loss of R{abs(cap_income):,.0f}</b>. Team costs exceed capitation budget.
-            <i>Reduce FTEs or increase population/capitation rate.</i></div>""", unsafe_allow_html=True)
+            🚨 <b>Net loss of R{abs(cap_income_mo):,.0f}/month</b>. Team + service costs exceed capitation budget.
+            <i>Reduce FTEs, increase population/capitation rate, or lower cost of services %.</i></div>""", unsafe_allow_html=True)
 
     if psychiatrist_fte == 0:
         st.markdown(f"""<div class="danger-box insight-impact">
@@ -775,7 +778,7 @@ if dangers or warnings or successes:
         st.markdown(f'<div class="success-box">{s}</div>', unsafe_allow_html=True)
 
 # ============================================================
-# VALUE SCORE + IMPROVEMENT SUGGESTIONS
+# VALUE SCORE
 # ============================================================
 st.markdown("---")
 st.markdown("## 📈 Value Score")
@@ -806,7 +809,7 @@ with col_breakdown:
             st.markdown(f'<div class="suggest-box">{s}</div>', unsafe_allow_html=True)
 
 # ============================================================
-# COMPARISON CHART
+# COMPARISON CHART (monthly income)
 # ============================================================
 st.markdown("---")
 st.markdown("## 📊 Side-by-Side Comparison")
@@ -815,24 +818,28 @@ ffs_services = 1
 cap_services = len(services_can)
 
 fig_c = go.Figure()
-fig_c.add_trace(go.Bar(name='FFS (Solo)', x=['Income (R)', 'Your Consults/Day', 'People Reached/Year', 'Services Available'],
-    y=[ffs_income/1e6, ffs_consults, ffs_annual_consultations/1000, ffs_services],
+fig_c.add_trace(go.Bar(name='FFS (Solo)',
+    x=['Monthly Income (R)', 'Your Consults/Day', 'People Reached/Year', 'Services Available'],
+    y=[ffs_income_mo/1e3, ffs_consults, ffs_annual_consultations/1000, ffs_services],
     marker_color='#6c757d',
-    text=[f'R{ffs_income/1e6:.2f}M', f'{ffs_consults}', f'{ffs_annual_consultations/1000:.1f}k', f'{ffs_services}'], textposition='outside'))
-cbc = '#28a745' if cap_income >= ffs_income else '#e6a817' if cap_income >= 0 else '#dc3545'
-fig_c.add_trace(go.Bar(name='Capitation (Team)', x=['Income (R)', 'Your Consults/Day', 'People Reached/Year', 'Services Available'],
-    y=[cap_income/1e6, your_required_consults, total_population_engaged/1000, cap_services],
+    text=[f'R{ffs_income_mo/1e3:.0f}k', f'{ffs_consults}', f'{ffs_annual_consultations/1000:.1f}k', f'{ffs_services}'],
+    textposition='outside'))
+cbc = '#28a745' if cap_income_mo >= ffs_income_mo else '#e6a817' if cap_income_mo >= 0 else '#dc3545'
+fig_c.add_trace(go.Bar(name='Capitation (Team)',
+    x=['Monthly Income (R)', 'Your Consults/Day', 'People Reached/Year', 'Services Available'],
+    y=[cap_income_mo/1e3, your_required_consults, total_population_engaged/1000, cap_services],
     marker_color=cbc,
-    text=[f'R{cap_income/1e6:.2f}M', f'{your_required_consults:.1f}', f'{total_population_engaged/1000:.1f}k', f'{cap_services}'], textposition='outside'))
+    text=[f'R{cap_income_mo/1e3:.0f}k', f'{your_required_consults:.1f}', f'{total_population_engaged/1000:.1f}k', f'{cap_services}'],
+    textposition='outside'))
 fig_c.update_layout(barmode='group', height=380, margin=dict(l=20, r=20, t=40, b=20),
     legend=dict(orientation="h", yanchor="bottom", y=1.02), showlegend=True)
 st.plotly_chart(fig_c, use_container_width=True)
 
 # ============================================================
-# TEAM COST BREAKDOWN
+# TEAM COST & SERVICE COST BREAKDOWN (monthly)
 # ============================================================
 st.markdown("---")
-st.markdown("## 👥 Team Cost Breakdown")
+st.markdown("## 👥 Cost Breakdown (Monthly)")
 col_table, col_pie = st.columns([1, 1])
 with col_table:
     fte_map = {"Psychiatrist": psychiatrist_fte, "Clinical Psychologist": clin_psych,
@@ -841,14 +848,15 @@ with col_table:
     rows = []
     for k, v in team_costs.items():
         if v > 0:
+            v_mo = v / 12
             if k == "Community Health Worker":
-                rows.append({'Role': k, 'FTE': fte_map[k], 'Capacity': 'Community', 'Session': '—', 'Annual Cost': f"R{v:,.0f}"})
+                rows.append({'Role': k, 'FTE': fte_map[k], 'Capacity': 'Community', 'Session': '—', 'Monthly Cost': f"R{v_mo:,.0f}"})
             else:
                 cap_note = f"{PROFESSIONS[k]['daily_capacity']}/day"
                 if k == profession and principal_in_team:
                     cap_note = f"{PROFESSIONS[k]['daily_capacity']}/day (you: {your_daily_consults:.1f})*"
                 rows.append({'Role': k, 'FTE': fte_map[k], 'Capacity': cap_note,
-                    'Session': f"{PROFESSIONS[k]['avg_session_min']} min", 'Annual Cost': f"R{v:,.0f}"})
+                    'Session': f"{PROFESSIONS[k]['avg_session_min']} min", 'Monthly Cost': f"R{v_mo:,.0f}"})
     if rows:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
         if principal_in_team:
@@ -856,123 +864,111 @@ with col_table:
 
     st.markdown(f"""| | |
 |---|---|
-| **Total Team Cost** | **R{total_team_cost:,.0f}** |
-| Budget Available | R{cap_total_budget:,.0f} |
+| **Team Cost** | **R{total_team_cost_mo:,.0f}/month** |
+| **Cost of Services** | **R{cap_cos_mo:,.0f}/month** |
+| ↳ R{cost_per_consult:,.0f}/consult × {total_visits_mo:,.0f} clinic visits/mo | |
+| Budget Available | R{cap_budget_mo:,.0f}/month |
 | Team % of Budget | {team_cost_pct:.1f}% |
-| Operational Costs | R{other_costs:,.0f} |
-| **Remaining (Your Income)** | **R{cap_income:,.0f}** |
+| CoS % of Budget | {cos_pct_of_budget:.1f}% |
+| **Remaining (Your Income)** | **R{cap_income_mo:,.0f}/month** |
 | **Team Daily Capacity** | **{team_daily_capacity:.0f} consults/day** |
 | **Demand** | **{visits_per_day:.0f} visits/day** |
 | **Avg Session Length** | **{avg_session_min:.0f} min** |""")
 
 with col_pie:
-    if total_team_cost > 0:
-        pd_data = {k: v for k, v in team_costs.items() if v > 0}
-        fig_p = px.pie(values=list(pd_data.values()), names=list(pd_data.keys()),
+    pie_data = {k: v/12 for k, v in team_costs.items() if v > 0}
+    pie_data["Cost of Services"] = cap_cos_mo
+    if sum(pie_data.values()) > 0:
+        fig_p = px.pie(values=list(pie_data.values()), names=list(pie_data.keys()),
             color_discrete_sequence=px.colors.sequential.Teal, hole=0.4)
-        fig_p.update_layout(height=300, margin=dict(l=20, r=20, t=30, b=20),
-            showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2))
+        fig_p.update_layout(height=340, margin=dict(l=20, r=20, t=30, b=20),
+            showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.3))
         st.plotly_chart(fig_p, use_container_width=True)
 
 # ============================================================
-# EMAIL SUBMISSION (replaces save/download)
+# SUBMIT SCENARIO (server-side CSV — no email)
 # ============================================================
 st.markdown("---")
 st.markdown("## 📩 Submit Your Scenario")
 
-submission_data = {
-    "timestamp": datetime.now().isoformat(),
-    "name": participant_name, "email": participant_email, "profession": profession,
-    "ffs_income": round(ffs_income), "ffs_consults_per_day": ffs_consults, "ffs_fee": ffs_fee,
-    "population": population, "capitation_rate": capitation,
-    "utilisation_rate": round(utilization_rate, 1),
-    "health_promo_pct": health_promo, "effective_utilisation": round(effective_utilization, 2),
-    "auto_chws": auto_chws,
-    "team": {"psychiatrist_fte": psychiatrist_fte, "clin_psych_fte": clin_psych,
-        "couns_psych_fte": couns_psych, "reg_counsellors": reg_counsellors,
-        "mh_nurses_fte": mh_nurses, "chws_auto": auto_chws},
-    "results": {"cap_income": round(cap_income), "income_vs_ffs": round(income_difference),
-        "income_vs_ffs_pct": round(income_difference_pct, 1), "clinical_users": clinical_users,
-        "total_population_engaged": total_population_engaged,
-        "pop_engaged_pct": round(pop_engaged_pct, 1),
-        "your_required_consults": round(your_required_consults, 1),
-        "your_daily_capacity": round(your_daily_consults, 1),
-        "team_daily_capacity": round(team_daily_capacity),
-        "avg_session_min": round(avg_session_min),
-        "engagement_multiplier": round(engagement_multiplier, 1),
-        "value_score": value_score, "team_cost_pct": round(team_cost_pct, 1),
-        "team_illegal": team_illegal,
-        "services_available": len(services_can), "services_missing": len(services_cannot)}
-}
-
 summary_text = (
     f"{participant_name or 'Anonymous'} | {profession} | "
-    f"FFS R{ffs_income:,.0f} → Cap R{cap_income:,.0f} ({income_difference_pct:+.1f}%) | "
-    f"Pop {population:,} @ R{capitation} | Engaged {pop_engaged_pct:.1f}% ({total_population_engaged:,}) | "
+    f"FFS R{ffs_income_mo:,.0f}/mo → Cap R{cap_income_mo:,.0f}/mo ({income_diff_pct:+.1f}%) | "
+    f"Pop {population:,} @ R{capitation}/yr | Engaged {pop_engaged_pct:.1f}% ({total_population_engaged:,}) | "
     f"Your consults {your_required_consults:.1f}/day (capacity {your_daily_consults:.1f}) | "
     f"Team cap {team_daily_capacity:.0f}/day | "
-    f"Avg {avg_session_min:.0f}min | Score {value_score}/100 | "
+    f"CoS R{cap_cos_mo:,.0f}/mo | Avg {avg_session_min:.0f}min | Score {value_score}/100 | "
     f"Team: Psych {psychiatrist_fte}, ClinP {clin_psych}, CounsP {couns_psych}, "
     f"RC {reg_counsellors}, MHN {mh_nurses}, CHW {auto_chws:.1f} | "
     f"Promo {health_promo}%"
 )
 
-st.markdown("**Your Scenario Summary** (will be included in your email):")
+st.markdown("**Your Scenario Summary:**")
 st.code(summary_text, language=None)
 
-# Validation — strict email check (catch commas, spaces, missing domain)
-import re
-email_valid = bool(
-    participant_email
-    and re.match(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$', participant_email.strip())
-)
-can_submit = bool(participant_name and email_valid)
+can_submit = bool(participant_name and participant_name.strip())
 
 if not participant_name:
     st.warning("⚠️ Please enter your **name** in the sidebar to submit.")
-if participant_email and not email_valid:
-    st.error("❌ Invalid email address — please check for typos (commas, spaces, missing domain).")
-elif not participant_email:
-    st.warning("⚠️ Please enter your **email address** in the sidebar to receive your summary.")
 
 if can_submit:
-    # Build mailto link: SHORT body (no JSON — browsers cap mailto at ~2000 chars)
-    clean_email = participant_email.strip()
-    email_subject = f"NHI MH Simulator - {participant_name} ({profession}) - Score {value_score}/100"
-    email_body = (
-        f"NHI Mental Health Simulator - Your Scenario\n"
-        f"{'=' * 50}\n\n"
-        f"{summary_text}\n\n"
-        f"{'=' * 50}\n"
-        f"Submitted: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
-        f"PsySSA Workshop | 3 February 2026\n"
-    )
-
-    mailto_url = (
-        f"mailto:{clean_email}"
-        f"?cc={WORKSHOP_COLLECTOR_EMAIL}"
-        f"&subject={urllib.parse.quote(email_subject)}"
-        f"&body={urllib.parse.quote(email_body)}"
-    )
-
-    col_email, _ = st.columns([2, 1])
-    with col_email:
-        st.markdown(f"""
-        <div style="text-align: center; margin: 1rem 0;">
-            <a href="{mailto_url}" class="email-btn" target="_blank">
-                📧 Email My Summary
-            </a>
-        </div>
-        <p style="text-align: center; font-size: 0.85rem; color: #666; margin-top: 0.5rem;">
-            Opens your email app with summary pre-filled.<br>
-            CC'd to Prof Moosa for workshop analysis.
-        </p>
-        """, unsafe_allow_html=True)
+    if st.button("✅ Submit My Scenario", type="primary", use_container_width=True):
+        # Build flat row for CSV
+        row = {
+            "timestamp": datetime.now().isoformat(),
+            "name": participant_name.strip(),
+            "profession": profession,
+            "ffs_fee": ffs_fee,
+            "ffs_consults_per_day": ffs_consults,
+            "ffs_costs_pct": ffs_costs_pct,
+            "ffs_income_monthly": round(ffs_income_mo),
+            "population": population,
+            "capitation_rate_annual": capitation,
+            "utilisation_rate": round(utilization_rate, 1),
+            "effective_utilisation": round(effective_utilization, 2),
+            "health_promo_pct": health_promo,
+            "psychiatrist_fte": psychiatrist_fte,
+            "clin_psych_fte": clin_psych,
+            "couns_psych_fte": couns_psych,
+            "reg_counsellors": reg_counsellors,
+            "mh_nurses_fte": mh_nurses,
+            "auto_chws": auto_chws,
+            "cap_budget_monthly": round(cap_budget_mo),
+            "team_cost_monthly": round(total_team_cost_mo),
+            "cost_of_services_monthly": round(cap_cos_mo),
+            "cap_income_monthly": round(cap_income_mo),
+            "income_diff_monthly": round(income_diff_mo),
+            "income_diff_pct": round(income_diff_pct, 1),
+            "clinical_users": clinical_users,
+            "total_population_engaged": total_population_engaged,
+            "pop_engaged_pct": round(pop_engaged_pct, 1),
+            "your_required_consults": round(your_required_consults, 1),
+            "your_daily_capacity": round(your_daily_consults, 1),
+            "team_daily_capacity": round(team_daily_capacity),
+            "cost_per_consult": round(cost_per_consult),
+            "avg_session_min": round(avg_session_min),
+            "value_score": value_score,
+            "team_illegal": team_illegal,
+            "services_available": len(services_can),
+            "services_missing": len(services_cannot),
+        }
+        # Append to CSV
+        try:
+            file_exists = os.path.exists(SUBMISSIONS_FILE)
+            with open(SUBMISSIONS_FILE, 'a', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=row.keys())
+                if not file_exists:
+                    writer.writeheader()
+                writer.writerow(row)
+            st.success(f"✅ **Submitted!** Thank you {participant_name}. Your scenario has been recorded for workshop analysis.")
+            st.balloons()
+        except Exception as e:
+            st.error(f"❌ Submission failed: {e}. Please notify the facilitator.")
 else:
     st.markdown("""
     <div style="text-align: center; padding: 1rem; background: #f0f0f0; border-radius: 8px; color: #999;">
-        📧 Email My Summary<br>
-        <span style="font-size: 0.85rem;">Enter your name and email in the sidebar to enable</span>
+        ✅ Submit My Scenario<br>
+        <span style="font-size: 0.85rem;">Enter your name in the sidebar to enable</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1010,23 +1006,45 @@ st.markdown(f"""<div class="assumptions-panel">
     <b>CHW reach:</b> {CHW_ENGAGEMENT_PER_YEAR:,}/CHW/yr (SA WBOT norms); 20% overlap with clinical users deducted &nbsp;|&nbsp;
     <b>Medication need:</b> ~60% of MH users (WHO) &nbsp;|&nbsp;
     <b>MH prevalence:</b> 30% lifetime (SASH study) &nbsp;|&nbsp;
-    <b>Operational costs:</b> 15% of remaining budget &nbsp;|&nbsp;
-    <b>No facility costs</b> — assumes existing NHI infrastructure
+    <b>Cost of Services (capitation):</b> FFS cost/consult × clinical team visits (excl CHW) &nbsp;|&nbsp;
+    <b>All figures displayed monthly</b> (annual ÷ 12)
     <br><br>
     <h4 style="margin-top: 0;">⚠️ Limitations</h4>
     <b>6 of 12 PHC roles modelled</b> — excludes PHC doctors, professional nurses, social workers, OTs, clinical associates, lay counsellors, enrolled nurses &nbsp;|&nbsp;
     <b>Individual sessions only</b> — group therapy multiplier not modelled (a group of 8-12 would significantly increase throughput) &nbsp;|&nbsp;
     <b>Service types collapsed</b> — assessment, therapy, crisis, family/couples, and community work all counted as "visits" &nbsp;|&nbsp;
     <b>Static utilisation</b> — no seasonal or epidemic variation &nbsp;|&nbsp;
-    <b>CTC estimates</b> — actual NHI rates may differ
+    <b>CTC estimates</b> — actual rates may differ
 </div>""", unsafe_allow_html=True)
+
+# ============================================================
+# ADMIN: Workshop Facilitator Download
+# ============================================================
+st.markdown("---")
+with st.expander("🔒 Workshop Admin"):
+    admin_pw = st.text_input("Admin Password", type="password", key="admin_pw")
+    if admin_pw == ADMIN_PASSWORD:
+        if os.path.exists(SUBMISSIONS_FILE):
+            with open(SUBMISSIONS_FILE, 'r') as f:
+                csv_data = f.read()
+            lines = csv_data.strip().split('\n')
+            count = len(lines) - 1 if len(lines) > 1 else 0
+            st.success(f"📊 **{count} submission(s)** recorded")
+            st.download_button("📥 Download All Submissions (CSV)", csv_data,
+                file_name=f"workshop_submissions_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv")
+            st.dataframe(pd.read_csv(SUBMISSIONS_FILE), use_container_width=True)
+        else:
+            st.info("No submissions yet.")
+    elif admin_pw:
+        st.error("Incorrect password.")
 
 # ============================================================
 # FOOTER
 # ============================================================
 st.markdown("---")
 st.markdown("""<div style="text-align: center; color: #666; padding: 1rem;">
-    <p>🧠 <b>NHI Mental Health: FFS vs Capitation Simulator</b> v6</p>
-    <p style="font-size: 0.85rem;">PsySSA Workshop | 3 February 2026<br>National Health Insurance | South Africa</p>
-    <p style="font-size: 0.8rem; opacity: 0.8;">Built for Prof Shabir Moosa | NHI Branch: User &amp; Service Provider Management<br>National Department of Health</p>
+    <p>🧠 <b>Mental Health Capitation Simulator</b> v7</p>
+    <p style="font-size: 0.85rem;">PsySSA Workshop | 3 February 2026</p>
+    <p style="font-size: 0.8rem; opacity: 0.8;">Prof Shabir Moosa | Department of Family Medicine &amp; PHC<br>University of the Witwatersrand</p>
 </div>""", unsafe_allow_html=True)
